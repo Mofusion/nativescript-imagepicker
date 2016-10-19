@@ -76,6 +76,14 @@ var SelectedAsset = (function (_super) {
         enumerable: true,
         configurable: true
     });
+    //just return file uri here, since android is nice
+    SelectedAsset.prototype.getTempFile = function(){
+        console.log('In android temp file... returning fileUrl');
+        let that = this;
+        return new Promise(function(resolve,reject){
+            resolve(that.fileUri);
+        });
+    }
     SelectedAsset.prototype._calculateFileUri = function () {
         var _this = this;
         var isKitKat = android.os.Build.VERSION.SDK_INT >= 19;
@@ -240,6 +248,7 @@ var ImagePicker = (function () {
         return Promise.resolve();
     };
     ImagePicker.prototype.present = function () {
+        //console.log('hello from android viewmodel');
         var _this = this;
         return new Promise(function (resolve, reject) {
             var RESULT_CODE_PICKER_IMAGES = 9192;
@@ -253,6 +262,7 @@ var ImagePicker = (function () {
                     if (resultCode == Activity.RESULT_OK) {
                         try {
                             var results = [];
+                            //console.log()
                             var clip = data.getClipData();
                             if (clip) {
                                 var count = clip.getItemCount();
@@ -289,12 +299,12 @@ var ImagePicker = (function () {
             }
             ;
             var intent = new Intent();
-            intent.setType("image/*");
+            intent.setType("video/* image/*");
             if (_this.mode === 'multiple') {
                 intent.putExtra("android.intent.extra.ALLOW_MULTIPLE", true);
             }
             intent.setAction(Intent.ACTION_GET_CONTENT);
-            var chooser = Intent.createChooser(intent, "Select Picture");
+            var chooser = Intent.createChooser(intent, "Select File");
             application.android.foregroundActivity.startActivityForResult(intent, RESULT_CODE_PICKER_IMAGES);
         });
     };

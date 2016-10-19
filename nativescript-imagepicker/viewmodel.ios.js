@@ -8,6 +8,8 @@ var data_observable = require("data/observable");
 var data_observablearray = require("data/observable-array");
 var frame = require("ui/frame");
 var image_source = require("image-source");
+var fs = require('file-system');
+            
 function create(options) {
     if (true) {
         return new ImagePickerPH(options);
@@ -247,6 +249,44 @@ var Asset = (function (_super) {
     };
     Asset.prototype.onThumbRequest = function () {
     };
+    Asset.prototype.getTempFile = function(){
+        let that = this;
+        return new Promise(function(resolve,reject){
+            let fileName = that.fileUri || that.videoUrl;
+            //TODO:DELETE FILE IN CONSUMER
+            let path = fs.path.join(fs.knownFolders.temp().path, fileName.toString().split('/').pop());
+            if(fs.File.exists(path)){
+                //already cached once, send it
+                resolve(path);
+                return;
+            }
+            if(that.videoUrl){
+                //export video to temp path
+                PHImageManager.defaultManager().requestExportSessionForVideoOptionsExportPresetResultHandler(that._phAsset, new PHVideoRequestOptions(),'AVAssetExportPresetHighestQuality', function(AVAssetExportSession, NSDictionary){
+                    AVAssetExportSession.outputURL = NSURL.fileURLWithPath(path);;
+                    AVAssetExportSession.determineCompatibleFileTypesWithCompletionHandler(results => {
+                        let outputFileType = results[1];
+                        AVAssetExportSession.outputFileType = outputFileType;
+                        AVAssetExportSession.exportAsynchronouslyWithCompletionHandler(function(){
+                            if(!AVAssetExportSession.error){
+                                that.notifyPropertyChange("selected", that.selected);    
+                                resolve(path);
+                            }else{
+                                console.log(`SessionError:${AVAssetExportSession.error}`);
+                                reject();
+                            }
+                        });
+                    });
+                });
+            }else {
+                that.getImage().then(imageSource=>{
+                    imageSource.saveToFile(path, 'jpeg');
+                    resolve(path);
+                });
+            }
+            
+        });
+    };
     return Asset;
 }(SelectedAsset));
 exports.Asset = Asset;
@@ -304,6 +344,11 @@ var ImagePickerPH = (function (_super) {
             imageSource.setNativeSource(uiImage);
             target.setThumb(imageSource);
         }.bind(this, target));
+        //Support videos
+        if(asset.mediaType !== PHAssetMediaType.Video) return;
+        PHImageManager.defaultManager().requestAVAssetForVideoOptionsResultHandler(asset, new PHVideoRequestOptions(), function(avaAsset, avAudioVideMix, nsDictionary){
+            target.videoUrl = avaAsset.URL;
+        });
     };
     ImagePickerPH.prototype.createPHImage = function (image, options) {
         return new Promise(function (resolve, reject) {
@@ -404,7 +449,17 @@ var AssetPH = (function (_super) {
         });
     };
     Object.defineProperty(AssetPH.prototype, "fileUri", {
+        set: function(val){
+            this._fileUri = val;
+        },
         get: function () {
+           //if it's manually been set, use that
+           if(this._fileUri)
+                return this._fileUri;
+
+            if(this.videoUrl)
+                return this.videoUrl;
+
             if (!AssetPH._uriRequestOptions) {
                 AssetPH._uriRequestOptions = PHImageRequestOptions.alloc().init();
                 AssetPH._uriRequestOptions.synchronous = true;
@@ -413,6 +468,7 @@ var AssetPH = (function (_super) {
             PHImageManager.defaultManager().requestImageDataForAssetOptionsResultHandler(this._phAsset, AssetPH._uriRequestOptions, function (data, uti, orientation, info) {
                 uri = info.objectForKey("PHImageFileURLKey");
             });
+            
             if (uri) {
                 return uri.toString();
             }
